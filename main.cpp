@@ -7,7 +7,7 @@
 #include <mutex>
 
 #define BUFFER_SIZE 128
-#define DEFAULT_BAUDRATE B1152000
+#define BAUDRATE B115200
 
 int fd = -1;
 auto portName = "/dev/ttyACM10";
@@ -38,25 +38,20 @@ void* readInThread(void* pointer) {
 	char inputbyte;
 	std::string curLine;
 	while (read(fd, &inputbyte, 1) == 1) {
-
 		curLine += inputbyte;
 		if(inputbyte == '\n'){
-			bool printLine = true;
-			mutex.lock();
-			if(curLine == lastLineSent) printLine = false;
-			mutex.unlock();
-			if(printLine)
-				std::cout << "IN: " << curLine;
+			if(curLine == "\n"){
+				curLine = "";
+				continue;
+			}
+//			bool printLine = true;
+//			mutex.lock();
+//			if(curLine == lastLineSent) printLine = false;
+//			mutex.unlock();
+//			if(printLine)
+			std::cout << "IN: " << curLine;
+			curLine = "";
 		}
-
-		//		if(newLine){
-		//			newLine = false;
-		//			std::cout << "IN: ";
-		//		}
-		//		std::cout << inputbyte;
-		//		std::cout.flush();
-		//		if(inputbyte == '\n')
-		//			newLine = true;
 	}
 	return 0;
 }
@@ -85,9 +80,8 @@ int main(int argc, char *argv[]){
 	auto sysCom = std::string("sudo ln -s ") + pts_name + " " + portName;
 	system(sysCom.c_str());
 
-	auto BAUDRATE = DEFAULT_BAUDRATE;
-
 	/* serial port parameters */
+	/*
 	struct termios newtio;
 	memset(&newtio, 0, sizeof(newtio));
 	struct termios oldtio;
@@ -105,6 +99,22 @@ int main(int argc, char *argv[]){
 	cfsetispeed(&newtio, BAUDRATE);
 	cfsetospeed(&newtio, BAUDRATE);
 	tcsetattr(fd, TCSANOW, &newtio);
+	*/
+
+	struct termios settings;
+	tcgetattr(fd, &settings);
+
+	cfsetispeed(&settings, BAUDRATE);
+	cfsetospeed(&settings, BAUDRATE); /* baud rate */
+	settings.c_cflag &= ~PARENB; /* no parity */
+	settings.c_cflag &= ~CSTOPB; /* 1 stop bit */
+	settings.c_cflag &= ~CSIZE;
+	settings.c_cflag |= CS8 | CLOCAL; /* 8 bits */
+	settings.c_lflag = ICANON; /* canonical mode */
+	settings.c_oflag &= ~OPOST; /* raw output */
+
+	tcsetattr(fd, TCSANOW, &settings); /* apply the settings */
+	tcflush(fd, TCOFLUSH);
 
 	/* start reader thread */
 	pthread_t thread;
@@ -116,11 +126,16 @@ int main(int argc, char *argv[]){
 	while (true) {
 		c = std::cin.get();
 		if(c == '\n'){
+			if(curLine == "\n"){
+				curLine = "";
+				continue;
+			}
 			curLine += c;
 			mutex.lock();
 			lastLineSent = curLine;
 			mutex.unlock();
-			write(fd, &c, curLine.size());
+			write(fd, curLine.c_str(), curLine.size());
+			curLine = "";
 		}
 		curLine += c;
 	}
