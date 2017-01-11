@@ -5,4 +5,4 @@ make
 ./SerialSimulator
 ```
 
-We use this internally to simulate raspberry PIs
+We use this internally to simulate arduinos
